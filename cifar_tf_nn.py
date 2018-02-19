@@ -53,7 +53,7 @@ def train_nn(x,size,X,Y,Xtest,Ytest, compress = False, M = 300):
     cost = tf.reduce_mean( tf.nn.softmax_cross_entropy_with_logits(logits=prediction,labels=y) )
     optimizer = tf.train.AdamOptimizer().minimize(cost)
     
-    hm_epochs = 100
+    hm_epochs = 150
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         idx = np.random.choice(Y.shape[0], size = size, replace = False)
@@ -79,20 +79,23 @@ x = tf.placeholder('float', [None, input_dim])
 y = tf.placeholder('float')
 
 
-max_batches = 1
+max_batches = 3
+X = np.array([],dtype =np.int32).reshape(0,3072)
+Y = np.array([],dtype =np.int32).reshape(0,10)
 for batch_idx in np.arange(1,1+max_batches):
     pics, labels = cifar_parser.training_pair(batch_idx, size = 10000)
-    labels_1hot = np.zeros(labels.size,n_classes)
+    labels_1hot = np.zeros((labels.size,n_classes))
     labels_1hot[np.arange(labels.size), labels] = 1
-    X, Y = pics.reshape(-1,3072), labels_1hot
-test_pics,labels = cifar_parser.testing_pair(size = 1000)
-labels_1hot = np.zeros(labels.size,n_classes)
+    X = np.vstack((X,pics.reshape(-1,3072)))
+    Y = np.vstack((Y, labels_1hot))
+test_pics,labels = cifar_parser.testing_pair(size = 5000)
+labels_1hot = np.zeros((labels.size,n_classes))
 labels_1hot[np.arange(labels.size), labels] = 1
 Xtest, Ytest = test_pics.reshape(-1,3072), labels_1hot
 
-accu_temp = np.zeros(1)
+accu_temp = np.zeros(10)
 for k in range(10):
-    accu_temp[k] = train_nn(x,10000,X,Y,Xtest,Ytest,compress=False)
+    accu_temp[k] = train_nn(x,max_batches*10000,X,Y,Xtest,Ytest,compress=False)
 accu = accu_temp.mean()
 print(accu)
 
