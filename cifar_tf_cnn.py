@@ -13,16 +13,18 @@ def conv2d(x,W):
     return tf.nn.conv2d(x,W,strides=[1, 1, 1, 1],padding = 'SAME')
 
 def maxpool2d(x):
-    return tf.nn.max_pool(x,ksize =[1,3,3,1],strides = [1,2,2,1],padding = 'SAME')
+    return tf.nn.max_pool(x,ksize =[1,2,2,1],strides = [1,2,2,1],padding = 'SAME')
 
-def CNN(x):
+def CNN(x,img_size):
+    sz1 = (img_size+1)//2
+    sz2 = (sz1+1)//2
     weights = {
         # 5 x 5 convolution, 3 input image, 64 outputs
         'W_conv1': tf.Variable(tf.random_normal([5, 5, 3, 128])),
         # 5x5 conv, 64 inputs, 128 outputs 
         'W_conv2': tf.Variable(tf.random_normal([5, 5, 128, 256])),
         # fully connected, 7*7*64 inputs, 1024 outputs
-        'W_fc1': tf.Variable(tf.random_normal([8*8*256, 4096])),
+        'W_fc1': tf.Variable(tf.random_normal([sz2**2*256, 4096])),
         'W_fc2': tf.Variable(tf.random_normal([4096, 1024])),
         'W_fc3': tf.Variable(tf.random_normal([1024, 256])),
         # 1024 inputs, 10 outputs (class prediction)
@@ -38,14 +40,14 @@ def CNN(x):
         'out': tf.Variable(tf.random_normal([n_classes]))
     }
     conv1 = tf.nn.relu(conv2d(x,weights['W_conv1']) + biases['b_conv1'])
-    conv1 = tf.nn.lrn(conv1, depth_radius=4,bias=1.0, alpha=0.001 / 9.0, beta=0.75)
+#    conv1 = tf.nn.lrn(conv1, depth_radius=4,bias=1.0, alpha=0.001 / 9.0, beta=0.75)
     conv1 = maxpool2d(conv1)
     
     conv2 = tf.nn.relu(conv2d(conv1,weights['W_conv2']) + biases['b_conv2'])
-    conv2 = tf.nn.lrn(conv2, depth_radius=4,bias=1.0, alpha=0.001 / 9.0, beta=0.75)
+#    conv2 = tf.nn.lrn(conv2, depth_radius=4,bias=1.0, alpha=0.001 / 9.0, beta=0.75)
     conv2 = maxpool2d(conv2)
     
-    fc1 = tf.reshape(conv2,[-1,8*8*256])
+    fc1 = tf.reshape(conv2,[-1,sz2**2*256])
     fc1 = tf.nn.relu(tf.matmul(fc1, weights['W_fc1'])+biases['b_fc1'])
     fc2 = tf.nn.relu(tf.matmul(fc1, weights['W_fc2'])+biases['b_fc2'])
     fc3 = tf.nn.relu(tf.matmul(fc2, weights['W_fc3'])+biases['b_fc3'])
@@ -53,8 +55,8 @@ def CNN(x):
 
     return output
 
-def train_CNN(x,size, X,Y,Xtest,Ytest):
-    prediction = CNN(x)
+def train_CNN(x,size, X,Y,Xtest,Ytest,img_size = 32):
+    prediction = CNN(x,img_size=img_size)
     cost = tf.reduce_mean( tf.nn.softmax_cross_entropy_with_logits(logits = prediction,labels = y) )
     optimizer = tf.train.AdamOptimizer().minimize(cost)
     
@@ -77,10 +79,7 @@ def train_CNN(x,size, X,Y,Xtest,Ytest):
         accu_test = accuracy.eval({x:Xtest, y:Ytest})
         print('Accuracy:',accu_test)
         return accu_test
-    
 
-x = tf.placeholder('float', [None, image_size, image_size, 3])
-y = tf.placeholder('float')
 
 max_batches = 5
 X = np.array([],dtype =np.int32).reshape(0,image_size,image_size,3)
@@ -96,8 +95,46 @@ labels_1hot = np.zeros((labels.size,n_classes))
 labels_1hot[np.arange(labels.size), labels] = 1
 Xtest, Ytest = test_pics, labels_1hot
 
+'''
+x = tf.placeholder('float', [None, image_size, image_size, 3])
+y = tf.placeholder('float')
+
 accu_temp = np.zeros(10)
 for k in range(10):
     accu_temp[k] = train_CNN(x,max_batches*10000,X,Y,Xtest,Ytest)
 accu = accu_temp.mean()
 print(accu)
+'''
+
+mask_size_list = np.array([2,3,4,5,6,7,8,10,12,14,16])
+M_list = np.zeros(mask_size_list.size)
+accu_dmd = np.zeros(mask_size_list.size)
+for i,mask_size in enumerate(mask_size_list):
+    rep = int(32/mask_size)
+    M_list[i] = rep**2
+    x = tf.placeholder('float', [None, rep, rep, 3])
+    y = tf.placeholder('float')
+    accu_temp = np.zeros(1)
+    for k in range(accu_temp.size):
+        mask_block = np.random.randint(2,size = (mask_size,mask_size,3))
+        mask_dmd = np.tile(mask_block, (rep, rep,1))
+        # now size: sample# x ~28 x ~28
+        dmd_X = X[:,:mask_size*rep,:mask_size*rep,:] * mask_dmd 
+        dmd_X = dmd_X.reshape(dmd_X.shape[0],rep,mask_size,rep,mask_size,3).sum(axis = (2,4))
+        dmd_Xtest = Xtest[:,:mask_size*rep,:mask_size*rep,:] * mask_dmd 
+        dmd_Xtest = dmd_Xtest.reshape(dmd_Xtest.shape[0],rep,mask_size,rep,mask_size,3).sum(axis = (2,4))
+        
+        accu_temp[k]=train_CNN(x,max_batches*10000,dmd_X,Y,dmd_Xtest,Ytest, img_size = rep)
+    accu = accu_temp.mean()
+    ratio = M_list[i]/1024
+    accu_dmd[i] = accu
+    print(mask_size, ratio, accu)
+
+outfile = 'cifar_result/cifar_CNN_dmd_accu'
+np.savez(outfile, M_list = M_list, accu_dmd= accu_dmd)        
+    
+
+
+
+
+

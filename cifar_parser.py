@@ -23,3 +23,5 @@ def testing_pair(size = 10000):
     pics = np.array(data[idx]).reshape(-1,32,32,3,order='F')
     labels = np.array(labels)[idx]
     return pics, labels
+
+#A,lbl = training_pair(1,size = 10)

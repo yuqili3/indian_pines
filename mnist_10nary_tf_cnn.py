@@ -131,3 +131,5 @@ for i, mask_size in enumerate(mask_size_list):
         accu_pm1_test[j,i] = accu_temp.mean()
 outfile = 'MNIST_result/MNIST_10nary_CNN_pm1_accu'
 np.savez(outfile, size_list=size_list, M_list = M_list, accu_pm1_test= accu_pm1_test)
+
+
